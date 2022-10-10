@@ -1,35 +1,19 @@
-FROM --platform=$BUILDPLATFORM golang:1.18 AS builder
-RUN apt-get update && \
-    apt-get install -y gcc-aarch64-linux-gnu gcc-x86-64-linux-gnu && \
-    ln -s /usr/bin/aarch64-linux-gnu-gcc /usr/bin/arm64-linux-gnu-gcc  && \
-    ln -s /usr/bin/x86_64-linux-gnu-gcc /usr/bin/amd64-linux-gnu-gcc
-# 1. Precompile the entire go standard library into the first Docker cache layer: useful for other projects too!
-RUN CGO_ENABLED=1 GOOS=linux go install -v -installsuffix cgo -a std
-ARG TARGETARCH
-ARG APP_SHA
-ARG VERSION
-ARG SEGMENT_WRITE_KEY
-WORKDIR /go/src/github.com/numary/ledger
-# get deps first so it's cached
-COPY go.mod .
-COPY go.sum .
-RUN --mount=type=cache,id=gomod,target=/go/pkg/mod \
-    --mount=type=cache,id=gobuild,target=/root/.cache/go-build \
-    go mod download
-COPY . .
-RUN --mount=type=cache,id=gomod,target=/go/pkg/mod \
-    --mount=type=cache,id=gobuild,target=/root/.cache/go-build \
-    CGO_ENABLED=1 GOOS=linux GOARCH=$TARGETARCH \
-    CC=$TARGETARCH-linux-gnu-gcc \
-    go build -o numary -tags json1,netgo \
-    -ldflags="-X github.com/numary/ledger/cmd.Version=${VERSION} \
-    -X github.com/numary/ledger/cmd.BuildDate=$(date +%s) \
-    -X github.com/numary/ledger/cmd.Commit=${APP_SHA} \
-    -X github.com/numary/ledger/cmd.DefaultSegmentWriteKey=${SEGMENT_WRITE_KEY}" ./
+# See here for image contents: https://github.com/microsoft/vscode-dev-containers/tree/v0.192.0/containers/go/.devcontainer/base.Dockerfile
 
-FROM ubuntu:jammy
-RUN apt update && apt install -y ca-certificates wget && rm -rf /var/lib/apt/lists/*
-COPY --from=builder /go/src/github.com/numary/ledger/numary /usr/local/bin/numary
-EXPOSE 3068
-ENTRYPOINT ["numary"]
-CMD ["server", "start"]
+# [Choice] Go version: 1, 1.16, 1.17
+ARG VARIANT="1.17"
+FROM mcr.microsoft.com/vscode/devcontainers/go:0-${VARIANT}
+
+# [Choice] Node.js version: none, lts/*, 16, 14, 12, 10
+ARG NODE_VERSION="none"
+RUN if [ "${NODE_VERSION}" != "none" ]; then su vscode -c "umask 0002 && . /usr/local/share/nvm/nvm.sh && nvm install ${NODE_VERSION} 2>&1"; fi
+
+# [Optional] Uncomment this section to install additional OS packages.
+# RUN apt-get update && export DEBIAN_FRONTEND=noninteractive \
+#     && apt-get -y install --no-install-recommends <your-package-list-here>
+
+# [Optional] Uncomment the next line to use go get to install anything else you need
+# RUN go get -x <your-dependency-or-tool>
+
+# [Optional] Uncomment this line to install global node packages.
+# RUN su vscode -c "source /usr/local/share/nvm/nvm.sh && npm install -g <your-package-here>" 2>&1
